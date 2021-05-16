@@ -1,0 +1,95 @@
+---
+title: "WQD7003_GRP"
+author: "Ratna Preeya Yen Leng Mahantheran"
+date: "5/16/2021"
+output: html_document
+---
+
+```{r}
+install.packages('smotefamily')
+
+library(randomForest)
+library(smotefamily)
+
+
+df <- read.csv('Kaagle_Upload.csv')
+sum(is.na(df))
+colSums(is.na(df))
+
+#Removed missing values
+df <- df[complete.cases(df), ]
+n <-nrow(df)
+
+#Separate into training and valid
+new.order = sample.int(n) ### Shuffled numbers from 1 to n
+size.train = floor(n*0.75) ### Number of observations in our training
+                           ### set. Use floor() to round down
+ind.train = new.order[1:size.train] ### Indices of observations
+                                    ### to put in training set
+ind.valid = new.order[(size.train + 1):n] ### Indices of observations
+                                          ### to put in validation set
+data.train = df[ind.train, ] ### Keep only observations in ind.train
+data.valid= df[ind.valid, ] ### Keep only observations in ind.valid
+
+print(data.train)
+
+data.train.rf = data.train
+data.train.rf$accident_severity = factor(data.train.rf$accident_severity)
+Y.train.rf = data.train.rf$accident_severity
+
+all.mtrys = 1:6
+all.nodesizes = c(1, 5, 10, 15, 20)
+all.pars.rf = expand.grid(mtry = all.mtrys, nodesize = all.nodesizes)
+n.pars = nrow(all.pars.rf)
+
+M = 5 # Number of times to repeat RF fitting. I.e. Number of OOB errors
+
+### Container to store OOB errors. This will be easier to read if we name
+### the columns.
+all.OOB.rf = array(0, dim = c(M, n.pars))
+names.pars = apply(all.pars.rf, 1, paste0, collapse = "-")
+colnames(all.OOB.rf) = names.pars
+
+
+for(i in 1:n.pars){
+  ### Progress update
+  print(paste0(i, " of ", n.pars))
+  
+  ### Get tuning parameters for this iteration
+  this.mtry = all.pars.rf[i, "mtry"]
+  this.nodesize = all.pars.rf[i, "nodesize"]
+  
+  for(j in 1:M){
+    ### Fit RF, then get and store OOB errors
+    this.fit.rf = randomForest(accident_severity~ ., data = data.train.rf,
+      mtry = this.mtry, nodesize = this.nodesize)
+    
+    pred.this.rf = predict(this.fit.rf)
+    this.err.rf = mean(Y.train.rf != pred.this.rf)
+    
+    all.OOB.rf[j, i] = this.err.rf
+  }
+}
+
+### Make a regular and relative boxplot
+boxplot(all.OOB.rf, las=2, main = "OOB Boxplot")
+rel.OOB.rf = apply(all.OOB.rf, 1, function(W) W/min(W))
+boxplot(t(rel.OOB.rf), las=2,  # las sets the axis label orientation
+  main = "Relative OOB Boxplot") 
+
+### Best model looks like mtry = 5 and nodesize = 10.
+fit.rf = randomForest(accident_severity ~ ., data = data.train.rf,
+  mtry = 5, nodesize = 10)
+
+### Get predictions and evaluate performance
+pred.rf = predict(fit.rf, data.train.rf[,-1])
+
+table(Y.train, pred.rf, dnn = c("Obs", "Pred"))
+(mis.rf = mean(Y.train.rf != pred.rf))
+#0.027
+
+predictions <- predict(fit.rf,data.valid)
+write.table(predictions, "Project2", sep = ",", row.names = F, col.names =
+F)
+
+```
