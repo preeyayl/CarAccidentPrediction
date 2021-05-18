@@ -74,7 +74,7 @@ df$sex_of_driver[df$sex_of_driver == 3] <- NA
 df$urban_or_rural_area[df$urban_or_rural_area == 3] <- NA
 colSums(is.na(df))
 
-#Drop those variables with lots of missing values that have little relation to the dependent variable
+#Drop those variables with lots of missing values that have little relation to the dependent variable (perhaps need to prove this with correlation heatmap?)
 df <- subset(df, select=-c(propulsion_code, driver_home_area_type, engine_capacity_.cc.))
 
 #Imputation of the missing values with -1 for the variables with high missing rate
