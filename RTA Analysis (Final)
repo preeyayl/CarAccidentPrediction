@@ -132,16 +132,17 @@ Accuracy_test = mean (predictions==test.data$accident_severity)
 print(Accuracy_test)
 
 #=================================================================
-#Bagging
+#J48 (Decision Tree)
 #=================================================================
+library(RWeka)
 set.seed(1214)
 train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
-bag_model = train(accident_severity~., data = smote_train, method = "treebag", trControl = train.control, tuneLength = 5)
+J48_model = train(accident_severity~., data = smote_train, method = "J48", trControl = train.control, tuneLength = 5)
 print(bag_model)
 
 #Test data set 
 set.seed(1214)
-predictions = bag_model %>% predict(test.data)
+predictions = J48_model %>% predict(test.data)
 Accuracy_test = mean (predictions==test.data$accident_severity)
 print(Accuracy_test)
 
