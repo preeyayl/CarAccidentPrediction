@@ -1,0 +1,161 @@
+df <- read.csv("Kaagle_Upload.csv")
+
+names(df)
+
+#Subset only the wanted attributes
+clean_df = df[c('sex_of_driver', 'age_band_of_driver', 'age_of_vehicle', 'road_surface_conditions', 'road_type', 'light_conditions', 'special_conditions_at_site', 'speed_limit', 'junction_detail',
+                                    'weather_conditions', 'carriageway_hazards', 'accident_severity', 'pedestrian_crossing.physical_facilities')]
+str(clean_df)
+
+#Converting them into factors
+clean_df$sex_of_driver <- as.factor(clean_df$sex_of_driver)
+clean_df$age_band_of_driver <- as.factor(clean_df$age_band_of_driver)
+clean_df$road_surface_conditions <- as.factor(clean_df$road_surface_conditions)
+clean_df$road_type <- as.factor(clean_df$road_type)
+clean_df$light_conditions <- as.factor(clean_df$light_conditions)
+clean_df$special_conditions_at_site <- as.factor(clean_df$special_conditions_at_site)
+clean_df$speed_limit <- as.factor(clean_df$speed_limit)
+clean_df$junction_detail <- as.factor(clean_df$junction_detail)
+clean_df$weather_conditions <- as.factor(clean_df$weather_conditions)
+clean_df$carriageway_hazards <- as.factor(clean_df$carriageway_hazards)
+clean_df$accident_severity <- as.factor(clean_df$accident_severity)
+clean_df$pedestrian_crossing.physical_facilities <- as.factor(clean_df$pedestrian_crossing.physical_facilities)
+
+#age_of_vehicle change to age_band_of_vehicle
+library(dplyr)
+clean_df <- clean_df %>% mutate(age_band_of_vehicle = case_when(age_of_vehicle >= 0 & age_of_vehicle <= 10 ~ '10',
+                                                                age_of_vehicle > 10 & age_of_vehicle <= 20 ~ '20',
+                                                                age_of_vehicle > 20 & age_of_vehicle <= 30 ~ '30',
+                                                                age_of_vehicle > 30 & age_of_vehicle <= 40 ~ '40',
+                                                                age_of_vehicle > 40 & age_of_vehicle <= 50 ~ '50',
+                                                                age_of_vehicle > 50 & age_of_vehicle <= 60 ~ '60',
+                                                                age_of_vehicle > 60 & age_of_vehicle <= 70 ~ '70',
+                                                                age_of_vehicle > 70 & age_of_vehicle <= 80 ~ '80',
+                                                                age_of_vehicle > 80 & age_of_vehicle <= 90 ~ '90',
+                                                                age_of_vehicle > 90 ~ '100',
+                                                                age_of_vehicle == -1 ~ '-1'))
+
+#remove age_of_vehicle & convert age_band_of_vehicle to factor
+clean_df <- subset(clean_df, select=-c(age_of_vehicle))
+clean_df$age_band_of_vehicle <- as.factor(clean_df$age_band_of_vehicle)
+str(clean_df)
+
+#Re-ordering factor levels in age_band_of_vehicle
+clean_df$age_band_of_vehicle <- factor(clean_df$age_band_of_vehicle, levels = c("-1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100"))
+summary(clean_df, maxsum = max(lengths(lapply(clean_df, unique))))
+
+#filter subset
+clean_df_subset <- clean_df[clean_df$sex_of_driver !=-1 & clean_df$age_band_of_driver !=-1 & clean_df$road_surface_conditions !=-1 & 
+                              clean_df$road_type !=-1 & clean_df$light_conditions !=-1 & clean_df$special_conditions_at_site !=-1 & 
+                              clean_df$junction_detail !=-1 & clean_df$weather_conditions != 9 & clean_df$carriageway_hazards !=-1 &
+                              clean_df$pedestrian_crossing.physical_facilities !=-1 & clean_df$age_band_of_vehicle !=-1, ]
+
+#Dropping of unused levels
+clean_df_subset <- droplevels(clean_df_subset)
+
+#Check the percentage of removed missing values
+nrow(data.frame(clean_df))
+nrow(data.frame(clean_df_subset))
+(nrow(clean_df) - nrow(clean_df_subset)) / nrow(clean_df) * 100
+str(clean_df_subset)
+
+#Rename the factor levels of dependent variable
+levels(clean_df_subset$accident_severity) <- c("Fatal", "Serious", "Slight")
+str(clean_df_subset)
+
+# Split the model
+library(caret)
+set.seed(1214)
+training.samples <- clean_df_subset$accident_severity %>% createDataPartition(p=0.8, list=FALSE)
+train.data = clean_df_subset[training.samples,]
+test.data = clean_df_subset[-training.samples,]
+
+# Handling Highly Imbalanced Class Data
+library(performanceEstimation)
+smote_train= smote(accident_severity ~ ., data  = train.data)
+
+#=================================================================
+#Multinomial Logistics Regression
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+mlg_model = train(accident_severity~., data = smote_train, method = "multinom", trControl = train.control, tuneLength = 5)
+print(mlg_model)
+
+#Test data set 
+set.seed(1214)
+predictions = mlg_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)
+
+#=================================================================
+#Naive Bayes
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+nb_model = train(accident_severity~., data = smote_train, method = "naive_bayes", trControl = train.control, tuneLength = 5)
+print(nb_model)
+summary(nb_model)
+
+#Test data set 
+set.seed(1214)
+predictions = nb_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)
+
+#=================================================================
+#K-Nearest Neighbors
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10,classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+knn_model = train(accident_severity~., data = smote_train, method = "kknn", trControl = train.control, tuneLength = 5)
+print(knn_model)
+
+#Test data set 
+set.seed(1214)
+predictions = knn_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)  
+
+#=================================================================
+#Random Forest
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+rf_model = train(accident_severity~., data = smote_train, method = "rf", trControl = train.control, tuneLength = 5)
+print(rf_model)
+
+#Test data set 
+set.seed(1214)
+predictions = rf_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)
+
+#=================================================================
+#Bagging
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+bag_model = train(accident_severity~., data = smote_train, method = "treebag", trControl = train.control, tuneLength = 5)
+print(bag_model)
+
+#Test data set 
+set.seed(1214)
+predictions = bag_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)
+
+#=================================================================
+#Boosting
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+boost_model = train(accident_severity~., data = smote_train, method = "xgbTree", trControl = train.control, tuneLength = 5)
+print(boost_model)
+
+
+#Test data set 
+set.seed(1214)
+predictions = boost_model %>% predict(test.data)
+Accuracy_test = mean (predictions==test.data$accident_severity)
+print(Accuracy_test)  
