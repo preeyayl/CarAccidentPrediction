@@ -145,18 +145,3 @@ set.seed(1214)
 predictions = J48_model %>% predict(test.data)
 Accuracy_test = mean (predictions==test.data$accident_severity)
 print(Accuracy_test)
-
-#=================================================================
-#Boosting
-#=================================================================
-set.seed(1214)
-train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
-boost_model = train(accident_severity~., data = smote_train, method = "xgbTree", trControl = train.control, tuneLength = 5)
-print(boost_model)
-
-
-#Test data set 
-set.seed(1214)
-predictions = boost_model %>% predict(test.data)
-Accuracy_test = mean (predictions==test.data$accident_severity)
-print(Accuracy_test)  
