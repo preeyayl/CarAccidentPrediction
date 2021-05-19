@@ -138,7 +138,7 @@ library(RWeka)
 set.seed(1214)
 train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
 J48_model = train(accident_severity~., data = smote_train, method = "J48", trControl = train.control, tuneLength = 5)
-print(bag_model)
+print(J48_model)
 
 #Test data set 
 set.seed(1214)
