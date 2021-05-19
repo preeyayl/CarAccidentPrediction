@@ -108,7 +108,7 @@ print(Accuracy_test)
 #=================================================================
 set.seed(1214)
 train.control = trainControl(method = 'cv', number = 10,classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
-knn_model = train(accident_severity~., data = smote_train, method = "kknn", trControl = train.control, tuneLength = 5)
+knn_model = train(accident_severity~., data = smote_train, method = "knn", trControl = train.control, tuneLength = 5)
 print(knn_model)
 
 #Test data set 
