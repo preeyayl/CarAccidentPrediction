@@ -6,90 +6,201 @@ output: html_document
 ---
 
 ```{r}
-install.packages('smotefamily')
-
 library(randomForest)
-library(smotefamily)
+library(leaps)
+library(MLeval)
+library(dplyr)
+library(caret)
+library(MLmetrics)
+
+library(gbm)
+library(performanceEstimation)
+
+#We load in our data containing information about accident severity and its corresponding factors
+df <- read.csv("Kaagle_Upload.csv")
+names(df)
+head(df)
+#Subset only the wanted attributes
+clean_df = df[c('sex_of_driver', 'age_band_of_driver', 'age_of_vehicle', 'road_surface_conditions', 'road_type', 'light_conditions', 'special_conditions_at_site', 'speed_limit', 'junction_detail',
+                                    'weather_conditions', 'carriageway_hazards', 'accident_severity', 'pedestrian_crossing.physical_facilities')]
+str(clean_df)
+
+#Converting them into factors
+clean_df$sex_of_driver <- as.factor(clean_df$sex_of_driver)
+clean_df$age_band_of_driver <- as.factor(clean_df$age_band_of_driver)
+clean_df$road_surface_conditions <- as.factor(clean_df$road_surface_conditions)
+clean_df$road_type <- as.factor(clean_df$road_type)
+clean_df$light_conditions <- as.factor(clean_df$light_conditions)
+clean_df$special_conditions_at_site <- as.factor(clean_df$special_conditions_at_site)
+clean_df$speed_limit <- as.factor(clean_df$speed_limit)
+clean_df$junction_detail <- as.factor(clean_df$junction_detail)
+clean_df$weather_conditions <- as.factor(clean_df$weather_conditions)
+clean_df$carriageway_hazards <- as.factor(clean_df$carriageway_hazards)
+clean_df$accident_severity <- as.factor(clean_df$accident_severity)
+clean_df$pedestrian_crossing.physical_facilities <- as.factor(clean_df$pedestrian_crossing.physical_facilities)
+
+#Next we are converting age_of_vehicle (range) to a whole number
+#Age_of_vehicle change to age_band_of_vehicle
+clean_df <- clean_df %>% mutate(age_band_of_vehicle = case_when(age_of_vehicle >= 0 & age_of_vehicle <= 10 ~ '10',
+                                                                age_of_vehicle > 10 & age_of_vehicle <= 20 ~ '20',
+                                                                age_of_vehicle > 20 & age_of_vehicle <= 30 ~ '30',
+                                                                age_of_vehicle > 30 & age_of_vehicle <= 40 ~ '40',
+                                                                age_of_vehicle > 40 & age_of_vehicle <= 50 ~ '50',
+                                                                age_of_vehicle > 50 & age_of_vehicle <= 60 ~ '60',
+                                                                age_of_vehicle > 60 & age_of_vehicle <= 70 ~ '70',
+                                                                age_of_vehicle > 70 & age_of_vehicle <= 80 ~ '80',
+                                                                age_of_vehicle > 80 & age_of_vehicle <= 90 ~ '90',
+                                                                age_of_vehicle > 90 ~ '100',
+                                                                age_of_vehicle == -1 ~ '-1'))
+#Remove age_of_vehicle (range) & convert age_band_of_vehicle to factor
+clean_df$age_band_of_vehicle <- as.factor(clean_df$age_band_of_vehicle)
+clean_df <- clean_df %>%
+  select(-c(age_of_vehicle))
+
+#Re-ordering factor levels in age_band_of_vehicle
+clean_df$age_band_of_vehicle <- factor(clean_df$age_band_of_vehicle, levels = c("-1", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100"))
+summary(clean_df, maxsum = max(lengths(lapply(clean_df, unique))))
+
+#Remove -1 from rows
+clean_df_subset <- clean_df[clean_df$sex_of_driver !=-1 & clean_df$age_band_of_driver !=-1 & clean_df$road_surface_conditions !=-1 & 
+                              clean_df$road_type !=-1 & clean_df$light_conditions !=-1 & clean_df$special_conditions_at_site !=-1 & 
+                              clean_df$junction_detail !=-1 & clean_df$weather_conditions != 9 & clean_df$carriageway_hazards !=-1 &
+                              clean_df$pedestrian_crossing.physical_facilities !=-1 & clean_df$age_band_of_vehicle !=-1, ]
+
+#Dropping of unused levels
+clean_df_subset <- droplevels(clean_df_subset)
+
+#Check the percentage of removed missing values
+nrow(data.frame(clean_df))
+nrow(data.frame(clean_df_subset))
+(nrow(clean_df) - nrow(clean_df_subset)) / nrow(clean_df) * 100
+
+#Rename the factor levels of dependent variable
+levels(clean_df_subset$accident_severity) <- c("Fatal", "Serious", "Slight")
+
+#We can observe that our data is highly imbalanced partial to accidents with only slight severity
+summary(clean_df_subset$accident_severity)
+
+# Split the model
+set.seed(1214)
+training.samples <- clean_df_subset$accident_severity %>% createDataPartition(p=0.8, list=FALSE)
+train.data = clean_df_subset[training.samples,]
+test.data = clean_df_subset[-training.samples,]
+
+# Handling Highly Imbalanced Class Data using SMOTE sampling technique
+smote_train= smote(accident_severity ~ ., data  = train.data)
+table(smote_train$accident_severity)
+
+#=================================================================
+#Multinomial Logistics Regression
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+mlg_model = train(accident_severity~., data = smote_train, method = "multinom", trControl = train.control, tuneLength = 5)
+print(mlg_model)
+
+#Test data set 
+Y_test_data <- test.data$accident_severity
+pred_mlg = mlg_model %>% predict(test.data)
+table(Y_test_data, pred_mlg, dnn = c("Obs", "Pred"))
+accuracy_mlg = mean (pred_mlg == test.data$accident_severity)
+print(accuracy_mlg)
+##0.659
+#=================================================================
+#Naive Bayes
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+nb_model = train(accident_severity~., data = smote_train, method = "naive_bayes", trControl = train.control, tuneLength = 5)
+print(nb_model)
+summary(nb_model)
+
+#Test data set 
+pred_nb = nb_model %>% predict(test.data)
+accuracy_nb = mean (pred_nb==test.data$accident_severity)
+print(accuracy_nb)
+##0.848
+#=================================================================
+#K-Nearest Neighbors
+#=================================================================
+knn_model = train(accident_severity~., data = smote_train, method = "knn", trControl = train.control, tuneLength = 5)
+print(knn_model)
+
+#Test data set 
+pred_knn = knn_model %>% predict(test.data)
+accuracy_knn = mean (pred_knn==test.data$accident_severity)
+print(accuracy_knn)  
+#0.618
+
+#=================================================================
+#Random Forest
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+rf_model = train(accident_severity~., data = smote_train, method = "rf", trControl = train.control, tuneLength = 5)
+print(rf_model)
+
+#Test data set 
+pred_rf = rf_model %>% predict(test.data)
+accuracy_rf = mean (pred_rf==test.data$accident_severity)
+print(accuracy_rf)
+#0.666
+
+###REMOVE
+#ROC and AUC value
+res <- evalm(rf_model)
+## get ROC
+res$roc
+
+#=================================================================
+#Decision Tree
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+dt_model = train(accident_severity~., data = smote_train, method = "J48", trControl = train.control, tuneLength = 5)
+print(dt)
+
+#Test data set 
+pred_dt = dt_model %>% predict(test.data)
+accuracy_dt= mean (pred_dt==test.data$accident_severity)
+print(accuracy_dt)
+#0.658
+
+#=================================================================
+#Boosted tree
+#=================================================================
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+boost_model = train(accident_severity~., data = smote_train, method = "xgbTree", trControl = train.control, tuneLength = 5)
+print(boost_model)
 
 
-df <- read.csv('Kaagle_Upload.csv')
-sum(is.na(df))
-colSums(is.na(df))
+#Test data set 
+predict_boosted_dt = boost_model %>% predict(test.data)
+accuracy_boosted_dt = mean (predict_boosted_dt==test.data$accident_severity)
+print(accuracy_boosted_dt)
 
-#Removed missing values
-df <- df[complete.cases(df), ]
-n <-nrow(df)
+#=================================================================
+#GBM
+#=================================================================
 
-#Separate into training and valid
-new.order = sample.int(n) ### Shuffled numbers from 1 to n
-size.train = floor(n*0.75) ### Number of observations in our training
-                           ### set. Use floor() to round down
-ind.train = new.order[1:size.train] ### Indices of observations
-                                    ### to put in training set
-ind.valid = new.order[(size.train + 1):n] ### Indices of observations
-                                          ### to put in validation set
-data.train = df[ind.train, ] ### Keep only observations in ind.train
-data.valid= df[ind.valid, ] ### Keep only observations in ind.valid
+set.seed(1214)
+train.control = trainControl(method = 'cv', number = 10, classProbs = TRUE, savePredictions = TRUE, summaryFunction = multiClassSummary)
+gbm_model = train(accident_severity~., data = smote_train, method = "gbm", trControl = train.control, verbose = FALSE)
+print(gbm_model)
 
-print(data.train)
+#Test data set 
+predict_gbm = gbm_model %>% predict(test.data)
+accuracy_gbm = mean (predict_gbm==test.data$accident_severity)
+print(accuracy_gbm)
+#0.667
 
-data.train.rf = data.train
-data.train.rf$accident_severity = factor(data.train.rf$accident_severity)
-Y.train.rf = data.train.rf$accident_severity
+#Variable importance plot
+gbmImp <- varImp(gbm_model, scale = FALSE)
+plot(gbmImp, top = 10)
 
-all.mtrys = 1:6
-all.nodesizes = c(1, 5, 10, 15, 20)
-all.pars.rf = expand.grid(mtry = all.mtrys, nodesize = all.nodesizes)
-n.pars = nrow(all.pars.rf)
-
-M = 5 # Number of times to repeat RF fitting. I.e. Number of OOB errors
-
-### Container to store OOB errors. This will be easier to read if we name
-### the columns.
-all.OOB.rf = array(0, dim = c(M, n.pars))
-names.pars = apply(all.pars.rf, 1, paste0, collapse = "-")
-colnames(all.OOB.rf) = names.pars
-
-
-for(i in 1:n.pars){
-  ### Progress update
-  print(paste0(i, " of ", n.pars))
-  
-  ### Get tuning parameters for this iteration
-  this.mtry = all.pars.rf[i, "mtry"]
-  this.nodesize = all.pars.rf[i, "nodesize"]
-  
-  for(j in 1:M){
-    ### Fit RF, then get and store OOB errors
-    this.fit.rf = randomForest(accident_severity~ ., data = data.train.rf,
-      mtry = this.mtry, nodesize = this.nodesize)
-    
-    pred.this.rf = predict(this.fit.rf)
-    this.err.rf = mean(Y.train.rf != pred.this.rf)
-    
-    all.OOB.rf[j, i] = this.err.rf
-  }
-}
-
-### Make a regular and relative boxplot
-boxplot(all.OOB.rf, las=2, main = "OOB Boxplot")
-rel.OOB.rf = apply(all.OOB.rf, 1, function(W) W/min(W))
-boxplot(t(rel.OOB.rf), las=2,  # las sets the axis label orientation
-  main = "Relative OOB Boxplot") 
-
-### Best model looks like mtry = 5 and nodesize = 10.
-fit.rf = randomForest(accident_severity ~ ., data = data.train.rf,
-  mtry = 5, nodesize = 10)
-
-### Get predictions and evaluate performance
-pred.rf = predict(fit.rf, data.train.rf[,-1])
-
-table(Y.train, pred.rf, dnn = c("Obs", "Pred"))
-(mis.rf = mean(Y.train.rf != pred.rf))
-#0.027
-
-predictions <- predict(fit.rf,data.valid)
-write.table(predictions, "Project2", sep = ",", row.names = F, col.names =
-F)
-
+#Overall results
+model <- c("MLG","Naive Bayes", "KNN", "Random Forest", "Decision Tree", "Boosted Tree", "GBM")
+accuracy <- c(accuracy_mlg, accuracy_nb, accuracy_knn, accuracy_rf, accuracy_dt, accuracy_boosted_dt,accuracy_gbm)
+data.frame(model,accuracy)
 ```
